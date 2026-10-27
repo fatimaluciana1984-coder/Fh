@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Mini DOOM 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
+    body { background: #000; color: #fff; font-family: monospace; text-align: center; overflow: hidden; }
+    #screen { display: block; margin: 0 auto; background: #111; max-width: 100vw; max-height: 60vh; }
+    .controls { display: flex; justify-content: space-around; padding: 10px; max-width: 400px; margin: 0 auto; }
+    .btn { background: #333; border: 2px solid #666; color: white; padding: 15px 25px; font-size: 18px; border-radius: 8px; user-select: none; }
+    .btn:active { background: #a00; }
+  </style>
+</head>
+<body>
+
+  <h3>MINI DOOM 3D</h3>
+  <canvas id="screen" width="320" height="200"></canvas>
+
+  <div class="controls">
+    <button class="btn" id="btnLeft">◄</button>
+    <button class="btn" id="btnUp">▲</button>
+    <button class="btn" id="btnDown">▼</button>
+    <button class="btn" id="btnRight">►</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("screen");
+    const ctx = canvas.getContext("2d");
+
+    // Mapa do labirinto (1 = parede, 0 = espaço vazio)
+    const map = [
+      [1,1,1,1,1,1,1,1],
+      [1,0,0,0,0,0,0,1],
+      [1,0,1,1,0,1,0,1],
+      [1,0,1,0,0,1,0,1],
+      [1,0,1,0,1,1,0,1],
+      [1,0,0,0,0,0,0,1],
+      [1,1,1,1,1,1,1,1]
+    ];
+    const MAP_WIDTH = 8, MAP_HEIGHT = 7;
+
+    // Jogador
+    let posX = 2.5, posY = 2.5;
+    let dirX = -1, dirY = 0;
+    let planeX = 0, planeY = 0.66;
+    let moveSpeed = 0.05, rotSpeed = 0.04;
+
+    const keys = {};
+
+    window.addEventListener("keydown", e => keys[e.key] = true);
+    window.addEventListener("keyup", e => keys[e.key] = false);
+
+    // Suporte a botões touch no celular
+    function bindTouch(id, keyName) {
+      const btn = document.getElementById(id);
+      btn.addEventListener("touchstart", (e) => { e.preventDefault(); keys[keyName] = true; });
+      btn.addEventListener("touchend", (e) => { e.preventDefault(); keys[keyName] = false; });
+      btn.addEventListener("mousedown", () => keys[keyName] = true);
+      btn.addEventListener("mouseup", () => keys[keyName] = false);
+    }
+    bindTouch("btnLeft", "ArrowLeft");
+    bindTouch("btnRight", "ArrowRight");
+    bindTouch("btnUp", "ArrowUp");
+    bindTouch("btnDown", "ArrowDown");
+
+    function update() {
+      if (keys["ArrowUp"] || keys["w"]) {
+        if (!map[Math.floor(posY)][Math.floor(posX + dirX * moveSpeed)]) posX += dirX * moveSpeed;
+        if (!map[Math.floor(posY + dirY * moveSpeed)][Math.floor(posX)]) posY += dirY * moveSpeed;
+      }
+      if (keys["ArrowDown"] || keys["s"]) {
+        if (!map[Math.floor(posY)][Math.floor(posX - dirX * moveSpeed)]) posX -= dirX * moveSpeed;
+        if (!map[Math.floor(posY - dirY * moveSpeed)][Math.floor(posX)]) posY -= dirY * moveSpeed;
+      }
+      if (keys["ArrowRight"] || keys["d"]) {
+        let oldDirX = dirX;
+        dirX = dirX * Math.cos(-rotSpeed) - dirY * Math.sin(-rotSpeed);
+        dirY = oldDirX * Math.sin(-rotSpeed) + dirY * Math.cos(-rotSpeed);
+        let oldPlaneX = planeX;
+        planeX = planeX * Math.cos(-rotSpeed) - planeY * Math.sin(-rotSpeed);
+        planeY = oldPlaneX * Math.sin(-rotSpeed) + planeY * Math.cos(-rotSpeed);
+      }
+      if (keys["ArrowLeft"] || keys["a"]) {
+        let oldDirX = dirX;
+        dirX = dirX * Math.cos(rotSpeed) - dirY * Math.sin(rotSpeed);
+        dirY = oldDirX * Math.sin(rotSpeed) + dirY * Math.cos(rotSpeed);
+        let oldPlaneX = planeX;
+        planeX = planeX * Math.cos(rotSpeed) - planeY * Math.sin(rotSpeed);
+        planeY = oldPlaneX * Math.sin(rotSpeed) + planeY * Math.cos(rotSpeed);
+      }
+    }
+
+    function render() {
+      // Teto (escuro) e Chão (cinza)
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+      ctx.fillStyle = "#333";
+      ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+
+      // Renderização Raycasting das paredes
+      for (let x = 0; x < canvas.width; x++) {
+        let cameraX = 2 * x / canvas.width - 1;
+        let rayDirX = dirX + planeX * cameraX;
+        let rayDirY = dirY + planeY * cameraX;
+
+        let mapX = Math.floor(posX);
+        let mapY = Math.floor(posY);
+
+        let sideDistX, sideDistY;
+        let deltaDistX = Math.abs(1 / rayDirX);
+        let deltaDistY = Math.abs(1 / rayDirY);
+        let perpWallDist;
+
+        let stepX, stepY;
+        let hit = 0, side = 0;
+
+        if (rayDirX < 0) { stepX = -1; sideDistX = (posX - mapX) * deltaDistX; }
+        else { stepX = 1; sideDistX = (mapX + 1.0 - posX) * deltaDistX; }
+
+        if (rayDirY < 0) { stepY = -1; sideDistY = (posY - mapY) * deltaDistY; }
+        else { stepY = 1; sideDistY = (mapY + 1.0 - posY) * deltaDistY; }
+
+        while (hit === 0) {
+          if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
+          else { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+          if (map[mapY][mapX] > 0) hit = 1;
+        }
+
+        if (side === 0) perpWallDist = (mapX - posX + (1 - stepX) / 2) / rayDirX;
+        else perpWallDist = (mapY - posY + (1 - stepY) / 2) / rayDirY;
+
+        let lineHeight = Math.floor(canvas.height / perpWallDist);
+        let drawStart = -lineHeight / 2 + canvas.height / 2;
+        if (drawStart < 0) drawStart = 0;
+        let drawEnd = lineHeight / 2 + canvas.height / 2;
+        if (drawEnd >= canvas.height) drawEnd = canvas.height - 1;
+
+        // Cor da parede com efeito de sombra
+        let color = side === 1 ? "#800000" : "#b22222";
+        ctx.fillStyle = color;
+        ctx.fillRect(x, drawStart, 1, drawEnd - drawStart);
+      }
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
